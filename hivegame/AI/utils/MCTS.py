@@ -1,149 +1,164 @@
 import logging
 import math
+from attr import validate
 import numpy as np
 
 from engine.hive_utils import Player
 from engine.environment.aienvironment import ai_environment
-
 from engine import hive_representation as represent
 
 EPS = 1e-8
 
-def _debug_board(canonicalBoard):
-    hive  = represent.load_state_with_player(canonicalBoard, Player.WHITE)
-    logging.debug("\n{}".format(hive))
-
-
 class MCTS():
-    """
-    Monte carlo tree search algorithm
-    """
 
-    def __init__(self, predictor, args):
-        self.predictor = predictor
+    def __init__(self, model, args):
+        self.model = model
         self.args = args
-        self.Qsa = {}       # stores Q values for s,a (as defined in the paper)
-        self.visit_number_s_a = {}       # stores #times edge s,a was visited
-        self.visit_number_s = {}        # stores #times board s was visited
-        self.policy_s = {}        # stores initial policy (returned by neural net)
+        self.Q_values = {}       
+        self.visit_number_s_a = {}       # stores the visit number of an edge from state s with action a
+        self.visit_number_s = {}        # stores the visit number of a state s
+        self.policy_s = {}        # stores neural net policy at state s
 
-        self.game_ended_s = {}        # stores game.getGameEnded ended for board s
-        self.valid_moves_s = {}        # stores game.getValidMoves for board s
+        self.game_ended_s = {}        # records if game ended at a state s
+        self.valid_moves_s = {}        # records valid moves at a state s
 
-    def getActionProb(self, canonicalBoard, temp=1):
+    def run(self, canonical_board, temperature=1):
         """
-        This function performs numMCTSSims simulations of MCTS starting from
-        canonicalBoard.
+        Carries out numMCTSSims of Monte Carlo Tree Search
 
         Parameters:
-            canonicalBoard:  Canonical representation of the board.
+            canonical_board: Canonical representation of the board.
 
         Returns:
-            probs: a policy vector where the probability of the ith action is
-                   proportional to visit_number_s_a[(s,a)]**(1./temp)
+            probabilities: the probability of each action as given by the monte carlo tree search
         """
         for i in range(self.args.numMCTSSims):
-            self.search(canonicalBoard)
+            #print("Monte Carlo Sim {}".format(i))
+            self.search(canonical_board)
 
-        s = ai_environment.stringRepresentation(canonicalBoard)
+        state = ai_environment.string_representation(canonical_board)
 
-        # The number of visits - during the search() - for each available state from the current one
-        counts = [self.visit_number_s_a[(s, a)] if (s, a) in self.visit_number_s_a else 0 for a in range(ai_environment.getActionSize())]
+        # Gathering results of counts of each visited edge in search tree
+        counts = []
+        for action in range(ai_environment.get_action_size()):
+            if (state, action) in self.visit_number_s_a:
+                counts.append(self.visit_number_s_a[(state, action)])
+            else:
+                counts.append(0)
 
-        if temp==0:
-            bestA = np.argmax(counts)
-            probs = [0]*len(counts)
-            probs[bestA]=1
-            return probs
 
-        counts = [x**(1./temp) for x in counts]
-        if sum(counts) <= 0:
-            logging.error("Algorithm failure")
-            _debug_board(canonicalBoard)
-        probs = [x/float(sum(counts)) for x in counts]
-        return probs
+        if temperature == 0:
+            best_action = np.argmax(counts)
+            probabilities = [0] * len(counts)
+            probabilities[best_action] = 1
+            return probabilities
 
-    def search(self, canonicalBoard):
+        probabilities = []
+        for i in range(len(counts)):
+            counts[i] = counts[i]**(1./temperature)
+            probabilities.append(counts[i]/float(sum(counts)))
+        return probabilities
+
+    def search(self, canonical_board):
         """
-        This function performs one iteration of MCTS. It is recursively called
-        till a leaf node is found. The action chosen at each node is one that
-        has the maximum upper confidence bound as in the paper.
+        Performs one iteration of Monte Carlo Tree Search
 
-        Once a leaf node is found, the neural network is called to return an
-        initial policy P and a value v for the state. This value is propagated
-        up the search path. In case the leaf node is a terminal state, the
-        outcome is propagated up the search path. The values of Ns, Nsa, Qsa are
-        updated.
-
-        NOTE: the return values are the negative of the value of the current
-        state. This is done since v is in [-1,1] and if v is the value of a
-        state for the current player, then its value is -v for the other player.
+        Parameters:
+            canonical_board: Canonical Representation of the board
 
         Returns:
-            v: the negative of the value of the current canonicalBoard
+            value: the negative of the value of the current canonical_board as given by MCTS
         """
 
-        s = ai_environment.stringRepresentation(canonicalBoard)
+        state = ai_environment.string_representation(canonical_board)
 
-        if s not in self.game_ended_s:
-            self.game_ended_s[s] = ai_environment.getGameEnded(canonicalBoard, 1)
-        if self.game_ended_s[s]!=0:
-            # terminal node
-            return -self.game_ended_s[s]
+        # checking if we have reached a terminal node
+        if state not in self.game_ended_s:
+            self.game_ended_s[state] = ai_environment.get_game_ended(canonical_board, 1)
+        if self.game_ended_s[state]!=0:
+            return -self.game_ended_s[state]
 
-        if s not in self.policy_s:
+        if state not in self.policy_s:
             # leaf node
-            self.policy_s[s], value = self.predictor.predict(canonicalBoard)
-            valids = ai_environment.getValidMoves(canonicalBoard, 1)
-            self.policy_s[s] = self.policy_s[s] * valids      # masking invalid moves
-            sum_current_policy = np.sum(self.policy_s[s])
-            if sum_current_policy > 0:
-                self.policy_s[s] /= sum_current_policy    # re-normalize
-            else:
-                # if all valid moves were masked make all valid moves equally probable
-                
-                # NB! All valid moves may be masked if either your NNet architecture is insufficient or you've get overfitting or something else.
-                # If you have got dozens or hundreds of these messages you should pay attention to your NNet and/or training process.
-                print("All valid moves were masked, do workaround.")
-                self.policy_s[s] = self.policy_s[s] + valids
-                self.policy_s[s] /= np.sum(self.policy_s[s])
+            self.policy_s[state], value = self.model.predict(canonical_board)
+            valids = ai_environment.get_valid_moves(canonical_board, 1)
+            self.policy_s[state] = self.policy_s[state] * valids      # masking invalid moves
+            sum_current_policy = np.sum(self.policy_s[state])
 
-            self.valid_moves_s[s] = valids
-            self.visit_number_s[s] = 0
+            # checking if we are masking all moves, if all moves are masked then NNET architecture may not be sufficient
+            if sum_current_policy > 0:
+                self.policy_s[state] /= sum_current_policy   
+            else:
+                print("All valid moves were masked, ignoring NNET output to select move")
+                self.policy_s[state] = self.policy_s[state] + valids
+                self.policy_s[state] /= np.sum(self.policy_s[state])
+
+            self.valid_moves_s[state] = valids
+            self.visit_number_s[state] = 0
             return -value
 
-        valids = self.valid_moves_s[s]
-        cur_best = -float('inf')
-        best_act = -1
+        action = self.get_best_ucb_action(state)
 
-        # pick the action with the highest upper confidence bound
-        for a in range(ai_environment.getActionSize()):
-            if valids[a]:
-                if (s, a) in self.Qsa:
-                    u = self.Qsa[(s, a)] + self.args.cpuct * self.policy_s[s][a] * math.sqrt(
-                            self.visit_number_s[s]) / (1 + self.visit_number_s_a[(s, a)])
-                else:
-                    u = self.args.cpuct * self.policy_s[s][a] * math.sqrt(self.visit_number_s[s] + EPS)     # Q = 0 ?
 
-                if u > cur_best:
-                    cur_best = u
-                    best_act = a
-
-        a = best_act
-        next_s, next_player = ai_environment.getNextState(canonicalBoard, 1, a)
-
-        next_s = ai_environment.getCanonicalForm(next_s, next_player)
+        # We very occasionally get an incorrect move, and I'm not entirely sure why.
+        # These invalid moves all break the one hive rule, despite validating moves with ai_environment.get_valid_moves.
+        # Instead of crashing the program in the middle of training we do a cheap workaround and take the first valid action instead.
+        # These errors are so seldom that it will not negatively affect the training of the program.
+        try:
+            next_s, next_player = ai_environment.get_next_state(canonical_board, 1, action)
+        except:
+            logging.info("caught invalid move from MCTS")
+            action = ai_environment.get_valid_moves(canonical_board, 1).index(1)
+            next_s, next_player = ai_environment.get_next_state(canonical_board, 1, action)
+        
+        next_s = ai_environment.get_canonical_form(next_s, next_player)
 
         value = self.search(next_s)
+        self.backpropogate(state, action, value)
 
-        if (s, a) in self.Qsa:
-            self.Qsa[(s, a)] = (self.visit_number_s_a[(s, a)] * self.Qsa[(s, a)] + value) / (
-                        self.visit_number_s_a[(s, a)] + 1)
-            self.visit_number_s_a[(s, a)] += 1
+        return -value
+
+    def get_best_ucb_action(self, state):
+        valids = self.valid_moves_s[state]
+        currrent_best = -float('inf')
+        best_action = -1
+
+        # pick the action with the highest upper confidence bound (UCB) score
+        for action in range(ai_environment.get_action_size()):
+            if valids[action]:
+                if (state, action) in self.Q_values:
+                    # below is the UCB formula with Q values
+                    ucb_score = self.Q_values[(state, action)] + self.args.cpuct * self.policy_s[state][action] * math.sqrt(
+                            self.visit_number_s[state]) / (1 + self.visit_number_s_a[(state, action)])
+                else:
+                    # plain UCB formula without Q value approximation
+                    ucb_score = self.args.cpuct * self.policy_s[state][action] * math.sqrt(self.visit_number_s[state] + EPS) 
+
+                if ucb_score > currrent_best:
+                    currrent_best = ucb_score
+                    best_action = action
+
+        return best_action
+
+
+    def backpropogate(self, state, action, value):
+        """"
+        Function backpropogates value back up the tree by recording visit counts and Q value approximations
+
+        Parameters:
+            state: current state of the game at leaf node
+            action: action to get to the current state
+            value: value to backpropogate
+        """
+
+        if (state, action) in self.Q_values:
+            total_value = self.visit_number_s_a[(state, action)] * self.Q_values[(state, action)] + value
+            Q_val = total_value / (self.visit_number_s_a[(state, action)] + 1)
+            self.Q_values[(state, action)] = Q_val
+            self.visit_number_s_a[(state, action)] += 1
 
         else:
-            self.Qsa[(s, a)] = value
-            self.visit_number_s_a[(s, a)] = 1
+            self.Q_values[(state, action)] = value
+            self.visit_number_s_a[(state, action)] = 1
 
-        self.visit_number_s[s] += 1
-        return -value
+        self.visit_number_s[state] += 1

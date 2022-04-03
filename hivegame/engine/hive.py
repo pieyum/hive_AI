@@ -1,4 +1,5 @@
 from __future__ import annotations
+import engine.environment.aienvironment as ai_env
 
 from utils.game_state import GameState
 from utils import hexutil
@@ -236,7 +237,7 @@ class Hive(object):
         logging.error(error_msg)
         raise HiveException(error_msg, 10010)
 
-    def action_from_vector(self, action_number: int) -> (HivePiece, hexutil.Hex):
+    def action_from_vector(self, action_number: int) -> (Tuple[HivePiece, hexutil.Hex]):
         """
         Maps an action number to an actual action. The fixed size action space is explained
         in detail at :func:`.hive_representation.get_all_action_vector``
@@ -274,6 +275,11 @@ class Hive(object):
                 logging.error(error_msg)
                 logging.error("piece: {}, adjacent piece: {}, direction: {}, action number: {}".format(
                     piece, adj_piece, direction, action_number))
+                logging.error("played pieces: {}".format(self.level.get_played_pieces(None)))
+                state = ai_env.ai_environment.get_init_board()
+                current_player=1
+                canonical_board = ai_env.ai_environment.get_canonical_form(state, current_player)
+                logging.error("move validity: {}".format(ai_env.ai_environment.get_valid_moves(canonical_board, current_player)[action_number]))
                 raise HiveException(error_msg, 10008)
             target_cell = self.level.goto_direction(adj_pos, direction)
             return piece, target_cell

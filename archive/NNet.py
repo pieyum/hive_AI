@@ -7,7 +7,7 @@ import logging
 
 sys.path.append('../..')
 from engine.hive_utils import dotdict
-from hivegame.AI.utils.NeuralNet import NeuralNet
+from archive.NeuralNet import NeuralNet
 from hivegame.engine.environment.aienvironment import ai_environment
 
 from .HiveNNet import HiveNNet as hivenet

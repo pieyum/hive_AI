@@ -2,13 +2,14 @@
 
 from typing import List
 
-from engine.hive import Hive, HiveException
+import engine.hive
 from engine.hive_utils import GameStatus, Player
 from engine.environment.AIGameEnv import AIGameEnv
+from configure import surrounded_to_win
 
 import logging
 import engine.hive_representation as represent
-from utils import importexport
+import utils.importexport
 
 class AIEnvironment(AIGameEnv):
     """
@@ -29,44 +30,44 @@ class AIEnvironment(AIGameEnv):
 
 # Methods for Game.py interface
     @staticmethod
-    def stringRepresentation(board):
+    def string_representation(board):
         return represent.string_representation(board)
 
     @staticmethod
-    def getActionSize():
+    def get_action_size():
         """
         :return: Number of possible actions in the given state
         """
-        hive = Hive()
+        hive = engine.hive.Hive()
         return len(represent.get_all_action_vector(hive))
 
     @staticmethod
-    def getCanonicalForm(two_dim_repr: List[List[int]], player_num):
+    def get_canonical_form(two_dim_repr: List[List[int]], player_num):
         hive = represent.load_state_with_player(two_dim_repr, AIEnvironment._player_to_inner_player(player_num))
         return represent.two_dim_representation(represent.canonical_adjacency_state(hive))
 
     @staticmethod
-    def getGameEnded(board, player):
+    def get_game_ended(board, player_num):
         # TODO victory condition should be configurable
-        return AIEnvironment.getGameEnded_simpified(board, player)
+        return AIEnvironment.get_game_ended_simplified(board, player_num)
 
     @staticmethod
-    def getGameEnded_simpified(board, player):
+    def get_game_ended_simplified(board, player):
         inner_player = AIEnvironment._player_to_inner_player(player)
         hive = represent.load_state_with_player(board, inner_player)
         res = 0
         white_queen_pos = hive.locate("wQ1")
         if white_queen_pos:
-            if len(hive.level.occupied_surroundings(white_queen_pos)) > 1:
+            if len(hive.level.occupied_surroundings(white_queen_pos)) == surrounded_to_win:
                 res = -1 if inner_player == Player.WHITE else 1
         black_queen_pos = hive.locate("bQ1")
         if black_queen_pos:
-            if len(hive.level.occupied_surroundings(black_queen_pos)) > 1:
+            if len(hive.level.occupied_surroundings(black_queen_pos)) == surrounded_to_win:
                 res = -1 if inner_player == Player.BLACK else 1
         return res
 
     @staticmethod
-    def getGameEnded_original(board, player_num):
+    def get_game_ended_original(board, player_num):
         hive = represent.load_state_with_player(board, AIEnvironment._player_to_inner_player(player_num))
         status = hive.check_victory()
         if status == GameStatus.UNFINISHED:
@@ -79,39 +80,40 @@ class AIEnvironment(AIGameEnv):
             raise ValueError('Unexpected game status')
 
     @staticmethod
-    def getValidMoves(board, player_num) -> List[int]:
+    def get_valid_moves(board, player_num) -> List[int]:
         hive = represent.load_state_with_player(board, AIEnvironment._player_to_inner_player(player_num))
         return represent.get_all_action_vector(hive)
 
     @staticmethod
-    def getNextState(board, player, action_number):
+    def get_next_state(board, player_num, action_number):
         assert action_number >= 0
-        hive = represent.load_state_with_player(board, AIEnvironment._player_to_inner_player(player))
+        hive = represent.load_state_with_player(board, AIEnvironment._player_to_inner_player(player_num))
         try:
             (piece, to_cell) = hive.action_from_vector(action_number)
-        except HiveException as error:
+        except engine.hive.HiveException as error:
             logging.error("HiveException was caught: {}".format(error))
             logging.error("action number: {}".format(action_number))
-            importexport.export_hive(hive, importexport.saved_game_path("last_error.json"))
+            utils.importexport.export_hive(hive, utils.importexport.saved_game_path("last_error.json"))
             raise
         # TODO handle pass
         try:
             hive.action_piece_to(piece, to_cell)
-        except HiveException as error:
+        except engine.hive.HiveException as error:
             logging.error("HiveException was caught: {}".format(error))
             logging.error("action number: {}, resulting action: ({}, {})".format(action_number, piece, to_cell))
             logging.error("Hive:\n{}".format(hive))
-            importexport.export_hive(hive, importexport.saved_game_path("last_error.json"))
+            utils.importexport.export_hive(hive, utils.importexport.saved_game_path("last_error.json"))
             raise
-        return represent.two_dim_representation(represent.get_adjacency_state(hive)), player*(-1)
+        return represent.two_dim_representation(represent.get_adjacency_state(hive)), player_num*(-1)
 
+    
     @staticmethod
-    def getInitBoard():
-        hive = Hive()
+    def get_init_board():
+        hive = engine.hive.Hive()
         return represent.two_dim_representation(represent.get_adjacency_state(hive))
 
     @staticmethod
-    def getSymmetries(board: List[List[int]], pi):
+    def get_symmetries(board: List[List[int]], pi):
         symmetries = []
         # Rotate the board 5 times
         for i in range(5):
@@ -134,9 +136,10 @@ class AIEnvironment(AIGameEnv):
         return result
 
     @staticmethod
-    def getBoardSize():
-        hive = Hive()
+    def get_board_size():
+        hive = engine.hive.Hive()
         return represent.two_dim_representation(represent.canonical_adjacency_state(hive)).shape
+
 
 
 ai_environment = AIEnvironment()

@@ -4,8 +4,8 @@ import os
 import sys
 
 from AI.player_factory import create_players, registered_players
-from AI.utils.Coach import Coach
-from AI.utils.keras.NNet import NNetWrapper
+from AI.trainer import Trainer
+from AI.CNN_AI import CNNModel
 from arena import Arena
 from hivegame.configure import train_args
 
@@ -31,8 +31,8 @@ def main():
 
     if opt_args.train_alpha:
         sys.setrecursionlimit(1500)
-        nnet = NNetWrapper()
-        c = Coach(nnet, train_args)
+        nnet = CNNModel()
+        c = Trainer(nnet, train_args)
         c.learn()
 
         # save model
@@ -46,12 +46,9 @@ def main():
     logging.info(f"Number of games to play: {opt_args.game_number}")
     logging.info(f"Player 1: {opt_args.player_white}")
     logging.info(f"Player 2: {opt_args.player_black}")
-    game = Arena(player1, player2)
+    game = Arena(player1, player2)        
+    game.playGames(opt_args.game_number)
 
-    if not opt_args.gui_enabled:
-        game.playGames(opt_args.game_number)
-    else:  # GUI enabled
-        pass # TODO IMPL
     logging.info("Thanks for playing Hive. Have a nice day!")
 
 
