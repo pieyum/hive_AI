@@ -97,7 +97,7 @@ class MCTS():
             self.visit_number_s[state] = 0
             return -value
 
-        action = self.get_best_ucb_action(state)
+        action = self.get_best_ucb_action(state)    # getting best action with ucb score
 
 
         # We very occasionally get an incorrect move, and I'm not entirely sure why.

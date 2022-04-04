@@ -83,8 +83,19 @@ class Arena(object):
         :return:
             A tuple of two items: The count of winning for each player
         """
+        white_won = 0
+        black_won = 0
+        draw = 0
         if num == 1:
-            self.playGame()
+            result = self.playGame()
+            if result == GameStatus.WHITE_WIN:
+                white_won += 1
+            elif result == GameStatus.BLACK_WIN:
+                black_won += 1
+            elif result == GameStatus.DRAW:
+                draw += 1
+            return white_won, black_won, draw
+
         logging.info(f"Execute {num} games")
         # White starts
         (white_won, black_won, draw) = self._playNumberOfGames(num//2)
@@ -103,20 +114,21 @@ def main():
 
     # loading NNET AI
     nnet = CNNModel(configure.nnet_args)
-    nnet.load_model(folder=os.path.join(ROOT_DIR, 'model_saved'), filename='model.h5')
-    nnet_player = CNN_Player(nnet, configure.train_args)   
+    nnet.load_model(folder=os.path.join(ROOT_DIR, 'model_saved'), filename='bestmodel.h5')
 
     # comp_nnet = CNNModel(configure.nnet_args)
     # comp_nnet.load_model(folder=os.path.join(ROOT_DIR, 'model_saved'), filename='model.h5')
     # comp_nnet_player = CNN_Player(nnet, configure.train_args)
 
+    nnet_player = CNN_Player(nnet, configure.train_args)   
     human_player = HumanPlayer(sys.stdin)
     minimax_player = MiniMaxPlayer(2, configure.minimax_args)
     random_player = RandomPlayer()
 
-    logging.info("Start game with the following AIs: {}, {}".format(human_player, random_player))
-    game = Arena(human_player, random_player)
-    p1_wins, p2_wins, draws = game.playGames(100)
+    logging.info("Start game with the following AIs: {}, {}".format(nnet_player, random_player))
+    game = Arena(nnet_player, random_player)
+    p1_wins, p2_wins, draws = game.playGames(1)
+
 
     logging.info("Player 1 won: {}, Player 2 won: {}, draws: {}".format(p1_wins, p2_wins, draws))
 

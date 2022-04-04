@@ -91,7 +91,11 @@ class MiniMaxAI():
 
             for i in range(len(actions_list)):
                 if actions_list[i] == 1:
-                    next_state, _ = ai_environment.get_next_state(position, player_num, i)
+                    try:
+                        next_state, _ = ai_environment.get_next_state(position, player_num, i)
+                    except:
+                        action = ai_environment.get_valid_moves(position, 1).index(1)
+                        next_state, _ = ai_environment.get_next_state(position, player_num, action)
                     eval, _ = self.minimax(next_state, depth - 1, alpha, beta, False)
 
                     if max_eval < eval:
@@ -110,7 +114,11 @@ class MiniMaxAI():
 
             for i in range(len(actions_list)):
                 if actions_list[i] == 1:
-                    next_state, _ = ai_environment.get_next_state(position, -1*player_num, i)
+                    try:
+                        next_state, _ = ai_environment.get_next_state(position, -1*player_num, i)
+                    except:
+                        action = ai_environment.get_valid_moves(position, 1).index(1)
+                        next_state, _ = ai_environment.get_next_state(position, -1*player_num, action)
                     eval, _ = self.minimax(next_state, depth - 1, alpha, beta, True)
 
                     if min_eval > eval:
